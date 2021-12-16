@@ -1,0 +1,54 @@
+;Definition of the structure returned by the DLL:
+structure sampleStruct
+    strval, D_ADDR
+    intval, int
+    charval, a10
+endstructure
+
+;Work-around v9 bug (tr#30812)
+.ifndef syn_chartostr
+.define syn_chartostr(p,a) ap_misc(MSC_CHAR2STR, ^val(p), a)
+.endc
+
+main
+record
+	dll_hndl	,D_ADDR		;Handle to the DLL
+	pointer		,D_ADDR		;Pointer returned from DLL
+	mem_hndl	,int		;Memory handle
+	alpha		,a10		;An alphanumeric buffer
+proc
+	open(1,o,"TT:")
+	dll_hndl = dll_open("SampleDLL")
+
+	;First, just getting an integer value
+	writes(1, string(dll_call(dll_hndl, DLL_TYPE_STDCALL, "fnSampleDLL")))
+
+	;Now, a routine that returns a pointer to a sampleStruct
+	pointer = dll_call(dll_hndl, DLL_TYPE_STDCALL, "fnSampleDLLptr")
+	call deref_pointer
+
+	;Finally, a routine that returns a pointer to a pointer to a sampleStruct
+	pointer = dll_call(dll_hndl, DLL_TYPE_STDCALL, "fnSampleDLLptrptr")
+					;Create a memory handle to the pointer
+	mem_hndl = mem_proc(DM_REG, D_ADDRSIZE, pointer)
+	pointer = ^i(^m(mem_hndl))	;Dereference a pointer to a pointer
+	call deref_pointer		;Now we can use it as a pointer
+	dll_close(dll_hndl)
+	stop
+
+;Dereference pointer as the address of a sampleStruct:
+deref_pointer,
+	mem_hndl = mem_proc(DM_REG, ^size(sampleStruct), pointer)
+
+	;Now we'll output the integer value:
+	writes(1, string(^m(sampleStruct.intval, mem_hndl)))
+
+	;Convert the char* member to an alpha:
+	xcall syn_chartostr(^m(sampleStruct.strval, mem_hndl), alpha)
+	writes(1, alpha)
+
+	;Convert a char array member to an alpha:
+	xcall syn_chartostr(^addr(^m(sampleStruct.charval, mem_hndl)), alpha)
+	writes(1, alpha)
+	return
+end
